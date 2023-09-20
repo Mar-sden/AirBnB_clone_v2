@@ -1,88 +1,56 @@
-# Configures a web server for deployment of web_static.
+# This script sets up webservers for the deployment of the webstatic
 
-# Nginx configuration file
-$nginx_conf = "server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    add_header X-Served-By ${hostname};
-    root   /var/www/html;
-    index  index.html index.htm;
-    location /hbnb_static {
-	alias /data/web_static/current;
-	index index.html index.htm;
-    }
-    location /redirect_me {
-    	return 301 http://cuberule.com/;
-    }
-    error_page 404 /404.html;
-    location /404 {
-      root /var/www/html;
-      internal;
-    }
-}"
-
-package { 'nginx':
-  ensure   => 'present',
-  provider => 'apt'
-} ->
-
-file { '/data':
-  ensure  => 'directory'
-} ->
-
-file { '/data/web_static':
-  ensure => 'directory'
-} ->
-
-file { '/data/web_static/releases':
-  ensure => 'directory'
-} ->
-
-file { '/data/web_static/releases/test':
-  ensure => 'directory'
-} ->
-
-file { '/data/web_static/shared':
-ensure => 'directory'
-  } ->
-
-file { '/data/web_static/releases/test/index.html':
-  ensure  => 'present',
-  content => "Holberton School Puppet\n"
-} ->
-
-file { '/data/web_static/current':
-  ensure => 'link',
-  target => '/data/web_static/releases/test'
-} ->
-
-exec { 'chown -R ubuntu:ubuntu /data/':
-  path => '/usr/bin/:/usr/local/bin/:/bin/'
+# Update and install nginx if it doesnt exist
+exec {'update':
+  provider => shell,
+  command  => 'apt-get -y update',
 }
 
-file { '/var/www':
-  ensure => 'directory'
-} ->
+package {'nginx':
+  ensure   => installed,
+  provider => 'apt',
+}
 
-file { '/var/www/html':
-  ensure => 'directory'
-} ->
+# create folders if they don't exist exits
+exec {'folders':
+  provider => shell,
+  command  => 'mkdir -p /data/web_static/releases/test/ /data/web_static/shared/',
+}
 
-file { '/var/www/html/index.html':
-  ensure  => 'present',
-  content => "Holberton School Nginx\n"
-} ->
+# create an html file with fake content to test configuration
+exec {'test':
+  command => '/bin/echo -e "<html>\n\t<head>\n\t</head>\n\t<body>\n\t\t<h1>Hello ALX</h1>\n\t</body>\n</html>" > /data/web_static/releases/test/index.html',
+  path    => '/bin',
+}
 
-file { '/var/www/html/404.html':
-  ensure  => 'present',
-  content => "Ceci n'est pas une page\n"
-} ->
+# remove the symbolic link if exist and recreate it
+exec {'remove-old-link':
+  provider => shell,
+  command  => 'rm -rf /data/web_static/current; ln -s /data/web_static/releases/test/ /data/web_static/current',
+}
 
-file { '/etc/nginx/sites-available/default':
-  ensure  => 'present',
-  content => $nginx_conf
-} ->
+# give ownership to the user and group ubuntu
+exec {'ownership':
+  provider => shell,
+  command  => 'chown -R ubuntu:ubuntu /data/',
+}
 
-exec { 'nginx restart':
-  path => '/etc/init.d/'
+service {'nginx':
+  ensure  => 'running',
+  enable  => true,
+  require => Package['nginx'],
+}
+
+# update the nginx config the content of /data/web_static/current/ to hbnb_static
+exec {'configure':
+  command => '/bin/sed -i "s/^\\s*location \\/ {/\\tlocation \\/hbnb_static {\\n\\t\\talias \\/data\\/web_static\\/current\\/;\\n\\t}\\n\\n&/" /etc/nginx/sites-enabled/default',
+  path    => '/bin',
+  unless  => '/bin/grep -q "^\\s*location \\/hbnb_static {" /etc/nginx/sites-enabled/default',
+}
+
+# restart the server
+exec {'restart':
+  command     => '/usr/sbin/service nginx restart',
+  refreshonly => true,
+  subscribe   => Service['nginx'],
 }
