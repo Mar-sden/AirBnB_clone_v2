@@ -1,86 +1,97 @@
 #!/usr/bin/python3
-"""the Place class."""
+
+""" Place Module for HBNB project """
+
+import os
 import models
-from os import getenv
-from models.base_model import Base
-from models.base_model import BaseModel
-from models.amenity import Amenity
-from models.review import Review
-from sqlalchemy import Column
-from sqlalchemy import Float
-from sqlalchemy import ForeignKey
-from sqlalchemy import Integer
-from sqlalchemy import String
-from sqlalchemy import Table
+from models.base_model import BaseModel, Base
+from sqlalchemy import Column, String, Integer, Float, Table, ForeignKey
 from sqlalchemy.orm import relationship
 
-
-association_table = Table("place_amenity", Base.metadata,
-                          Column("place_id", String(60),
-                                 ForeignKey("places.id"),
-                                 primary_key=True, nullable=False),
-                          Column("amenity_id", String(60),
-                                 ForeignKey("amenities.id"),
-                                 primary_key=True, nullable=False))
+if os.getenv('HBNB_TYPE_STORAGE') == 'db':
+    place_amenity = Table(
+            "place_amenity",
+            Base.metadata,
+            Column(
+                "place_id",
+                String(60),
+                ForeignKey(
+                    "places.id",
+                    onupdate='CASCADE',
+                    ondelete='CASCADE'),
+                primary_key=True,
+                nullable=False),
+            Column(
+                "amenity_id",
+                String(60),
+                ForeignKey(
+                    "amenities.id",
+                    onupdate='CASCADE',
+                    ondelete='CASCADE'),
+                primary_key=True,
+                nullable=False))
 
 
 class Place(BaseModel, Base):
-    """Represents a Place for a MySQL database.
+    """ A place to stay """
 
-    Inherits from SQLAlchemy Base and links to the MySQL table places.
+    if os.getenv('HBNB_TYPE_STORAGE') == 'db':
+        __tablename__ = 'places'
+        city_id = Column(String(60), ForeignKey("cities.id"), nullable=False)
+        user_id = Column(String(60), ForeignKey("users.id"), nullable=False)
+        name = Column(String(128), nullable=False)
+        description = Column(String(1024), nullable=True)
+        number_rooms = Column(Integer, nullable=False, default=0)
+        number_bathrooms = Column(Integer, nullable=False, default=0)
+        max_guest = Column(Integer, nullable=False, default=0)
+        price_by_night = Column(Integer, nullable=False, default=0)
+        latitude = Column(Float, nullable=True)
+        longitude = Column(Float, nullable=True)
 
-    Attributes:
-        __tablename__ (str): The name of the MySQL table to store places.
-        city_id (sqlalchemy String): The place's city id.
-        user_id (sqlalchemy String): The place's user id.
-        name (sqlalchemy String): The name.
-        description (sqlalchemy String): The description.
-        number_rooms (sqlalchemy Integer): The number of rooms.
-        number_bathrooms (sqlalchemy Integer): The number of bathrooms.
-        max_guest (sqlalchemy Integer): The maximum number of guests.
-        price_by_night (sqlalchemy Integer): The price by night.
-        latitude (sqlalchemy Float): The place's latitude.
-        longitude (sqlalchemy Float): The place's longitude.
-        reviews (sqlalchemy relationship): The Place-Review relationship.
-        amenities (sqlalchemy relationship): The Place-Amenity relationship.
-        amenity_ids (list): An id list of all linked amenities.
-    """
-    __tablename__ = "places"
-    city_id = Column(String(60), ForeignKey("cities.id"), nullable=False)
-    user_id = Column(String(60), ForeignKey("users.id"), nullable=False)
-    name = Column(String(128), nullable=False)
-    description = Column(String(1024))
-    number_rooms = Column(Integer, default=0)
-    number_bathrooms = Column(Integer, default=0)
-    max_guest = Column(Integer, default=0)
-    price_by_night = Column(Integer, default=0)
-    latitude = Column(Float)
-    longitude = Column(Float)
-    reviews = relationship("Review", backref="place", cascade="delete")
-    amenities = relationship("Amenity", secondary="place_amenity",
-                             viewonly=False)
-    amenity_ids = []
+        reviews = relationship(
+                "Review",
+                backref="place",
+                cascade="all, delete, delete-orphan")
 
-    if getenv("HBNB_TYPE_STORAGE", None) != "db":
+        amenities = relationship(
+                "Amenity",
+                secondary="place_amenity",
+                viewonly=False,
+                back_populates="place_amenities")
+    else:
+        city_id = ""
+        user_id = ""
+        name = ""
+        description = ""
+        number_rooms = 0
+        number_bathrooms = 0
+        max_guest = 0
+        price_by_night = 0
+        latitude = 0.0
+        longitude = 0.0
+        amenity_ids = []
+
         @property
         def reviews(self):
-            """Get a list of all linked Reviews."""
-            review_list = []
-            for review in list(models.storage.all(Review).values()):
-                if review.place_id == self.id:
-                    review_list.append(review)
-            return review_list
+            """ returns the reviews with place.id == Place.id """
+
+            list_reviews = []
+            for key, obj in models.storage.all().items():
+                if "Review" in key:
+                    if obj.place_id == self.id:
+                        list_reviews += [obj]
+
+            return list_reviews
 
         @property
         def amenities(self):
-            """Get/set linked Amenities."""
-            amenity_list = []
-            for amenity in list(models.storage.all(Amenity).values()):
-                if amenity.id in self.amenity_ids:
-                    amenity_list.append(amenity)
-            return amenity_list
+            """ Retrns the list of aAmenity instances basef on the ids """
+
+            return self.amenity_ids
 
         @amenities.setter
-        def amenities(self, value):
-            if type(value) == Amenity:
-                self.amenity_ids.append(value.id)
+        def amenities(self, obj=None):
+            """  Adds a new Amenity.id to the attribute """
+
+            if type(obj) is Amenity and obj.id not in self.amenity_ids:
+                self.amenity_ids.append(obj.id)
